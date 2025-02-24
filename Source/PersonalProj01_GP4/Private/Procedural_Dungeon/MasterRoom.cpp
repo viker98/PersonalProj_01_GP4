@@ -9,6 +9,19 @@ AMasterRoom::AMasterRoom()
  	// Set this actor to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
+	RootSceneComponent = CreateDefaultSubobject<USceneComponent>(TEXT("RootComponent"));
+
+	Exits = CreateDefaultSubobject<USceneComponent>(TEXT("ExitList"));
+	Exits->SetupAttachment(RootSceneComponent);
+
+    FloorSpawns = CreateDefaultSubobject<USceneComponent>(TEXT("FloorSpawnList"));
+	FloorSpawns->SetupAttachment(RootSceneComponent);
+
+	Geometry = CreateDefaultSubobject<USceneComponent>(TEXT("GeometryFolder"));
+	Geometry->SetupAttachment(RootSceneComponent);
+
+	boxCollider = CreateDefaultSubobject<UBoxComponent>(TEXT("BoxCollider"));
+	boxCollider->SetupAttachment(RootSceneComponent);
 }
 
 TArray<USceneComponent*> AMasterRoom::GetExitList()
@@ -16,13 +29,22 @@ TArray<USceneComponent*> AMasterRoom::GetExitList()
 	return ExitsList;
 }
 
+USceneComponent* AMasterRoom::GetBoxCollider()
+{
+	return boxCollider;
+}
+
+
+USceneComponent* AMasterRoom::GetFloorSpawnsFolder()
+{
+	return FloorSpawns;
+}
+
 // Called when the game starts or when spawned
 void AMasterRoom::BeginPlay()
 {
 	Super::BeginPlay();
-	exits = FindComponentByTag<USceneComponent>(FName("ExitList"));
-	exits->GetChildrenComponents(true,ExitsList);
-	
+	Exits->GetChildrenComponents(false,ExitsList);
 }
 
 // Called every frame

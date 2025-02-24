@@ -19,10 +19,22 @@ ADungeonGenerator::ADungeonGenerator()
 void ADungeonGenerator::BeginPlay()
 {
 	Super::BeginPlay();
+	totalRooms = RoomAmount;
+}
+
+
+void ADungeonGenerator::StartGenerator(int roomNumber, int seed, int CoinAmount)
+{
+	UE_LOG(LogTemp, Warning, TEXT("GHES"));
+	RoomAmount = roomNumber;
+	Seed = seed;
+	AmountOfCoins = CoinAmount;
+
+
+
 	SetSeed();
 	SpawnStartRoom();
 	SpawnNextRoom();
-
 }
 
 void ADungeonGenerator::SpawnStartRoom()
@@ -31,6 +43,8 @@ void ADungeonGenerator::SpawnStartRoom()
 	AActor* Dungeon_Room = GetWorld()->SpawnActor<AMasterRoom>(firstRoom, FVector::ZeroVector, FRotator::ZeroRotator, SpawnParams);
 	AMasterRoom* roomRef = Cast<AMasterRoom>(Dungeon_Room);
 	ExitsArray = roomRef->GetExitList();
+	roomRef->GetBoxCollider()->GetChildrenComponents(false,OverlappedList);
+	FTimerHandle delayTimerHandle;
 }
 
 void ADungeonGenerator::SpawnNextRoom()
@@ -41,23 +55,30 @@ void ADungeonGenerator::SpawnNextRoom()
 	int exitNum = RandomStream.RandRange(0, ExitsArray.Num() - 1);
 	
 	chosenExit = ExitsArray[exitNum];
-	
-	
 
-	ExitsArray.RemoveAt(exitNum);
 
-	if(RoomAmount % 10 == 0)
+	if(CheckingForOverlapWithNewRoom(chosenExit))
 	{
-		UE_LOG(LogTemp,Warning, TEXT("Making Special Room"))
+		CheckForOverlap();
+		return;
+	}
 
+
+
+	if(RoomAmount % 10 == 0 && RoomAmount != totalRooms)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Making Special Room"))
 		FActorSpawnParameters SpawnParams;
-		AActor* nextRoom = GetWorld()->SpawnActor<AMasterRoom>(
+		AMasterRoom* nextRoom = GetWorld()->SpawnActor<AMasterRoom>(
 			SpecialRoomList[RandomStream.RandRange(0, SpecialRoomList.Num() - 1)],
 			chosenExit->GetComponentLocation(),
 			chosenExit->GetComponentRotation(),
 			SpawnParams);
 		LatestRoom = Cast<AMasterRoom>(nextRoom);
-
+		--RoomAmount;
+		ExitsArray.Append(LatestRoom->GetExitList());
+		OverlappedList.Add(LatestRoom->GetBoxCollider());
+		ExitsArray.RemoveAt(exitNum);
 	}
 	else
 	{
@@ -68,67 +89,72 @@ void ADungeonGenerator::SpawnNextRoom()
 			chosenExit->GetComponentRotation(),
 			SpawnParams);
 		LatestRoom = Cast<AMasterRoom>(nextRoom);
+		--RoomAmount;
 		AddFloorSpawnsToList();
+		ExitsArray.Append(LatestRoom->GetExitList());
+		OverlappedList.Add(LatestRoom->GetBoxCollider());
+		ExitsArray.RemoveAt(exitNum);
 
 	}
 	FTimerHandle delayTimerHandle;
-	GetWorld()->GetTimerManager().SetTimer(delayTimerHandle, this, &ADungeonGenerator::CheckForOverlap, delayTimer , false);
+	GetWorldTimerManager().SetTimer(delayTimerHandle, this, &ADungeonGenerator::CheckForOverlap, delayTimer, false);
 	//CheckForOverlap();
 
 }
-
-void ADungeonGenerator::AddOverlappingRoomsToList()
+void ADungeonGenerator::CloseOffExits()
 {
-	USceneComponent* boxColliderFolder = LatestRoom->FindComponentByTag<USceneComponent>(FName("OverlapList"));
-	TArray<USceneComponent*> colliderArray;
-	boxColliderFolder->GetChildrenComponents(true, colliderArray);
-
-	TArray<UPrimitiveComponent*> ArrayOverlap;
-
-	for (int i = 0; i < colliderArray.Num(); ++i)
+	for(USceneComponent* exit : ExitsArray)
 	{
-		Cast<UBoxComponent>(colliderArray[i])->GetOverlappingComponents(ArrayOverlap);
-
-		OverlappedList.Append(ArrayOverlap);
+		USceneComponent* exitWall = exit->GetChildComponent(0)->GetChildComponent(0);
+		UE_LOG(LogTemp, Warning, TEXT("This is exit wall: %s"), *exitWall->GetName());
+		Cast<UStaticMeshComponent>(exitWall)->SetVisibility(true);
 	}
 }
-
-void ADungeonGenerator::CheckForOverlap()
+bool ADungeonGenerator::CheckingForOverlapWithNewRoom(USceneComponent* chosenExit)
 {
-	AddOverlappingRoomsToList();
-	// does not have a overlap 
-	if (OverlappedList.IsEmpty()) 
-	{
-		OverlappedList.Empty();
-		RoomAmount--;
-		ExitsArray.Append(LatestRoom->GetExitList());
-		if (RoomAmount <= 0) 
+	USceneComponent* exitCollider = chosenExit->GetChildComponent(0);
+
+	TArray<AActor*> OverlappedItems;
+
+	UBoxComponent* exitboxCollider = Cast<UBoxComponent>(exitCollider);
+
+	exitboxCollider->GetOverlappingActors(OverlappedItems);
+
+		for (AActor* actors : OverlappedItems)
 		{
-
-			UE_LOG(LogTemp, Warning, TEXT("Dungeon Done")); 
-			SpawnCoinAtLocations();
-			return;
+			if (actors)
+			{
+				UE_LOG(LogTemp, Warning, TEXT("Overlapping with: %s"), *actors->GetName());
+			}
 		}
-		SpawnNextRoom();
-		return;
-		
-	}
 
-	// has a overlap
+	if (OverlappedItems.IsEmpty())
+	{
+		UE_LOG(LogTemp, Warning, TEXT("This mean no overlap"))
+			return false;
+	}
 	else
 	{
-		OverlappedList.Empty();
-		LatestRoom->Destroy();
-		if (RoomAmount <= 0) 
-		{
-
-			UE_LOG(LogTemp, Warning, TEXT("DungeonDone"));
-			SpawnCoinAtLocations();
-			return;
-		}
-		SpawnNextRoom();
+		UE_LOG(LogTemp, Warning, TEXT("This means overlap"))
+			return true;
 	}
 
+}
+void ADungeonGenerator::CheckForOverlap()
+{
+
+	if(RoomAmount <= 0)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Dungeon Done"));
+		SpawnFinalRooms();
+		CloseOffExits();
+		SpawnCoinAtLocations();
+		return;
+	}
+	else
+	{
+		SpawnNextRoom();
+	}
 }
 
 void ADungeonGenerator::SetSeed()
@@ -145,7 +171,7 @@ void ADungeonGenerator::SetSeed()
 
 void ADungeonGenerator::AddFloorSpawnsToList()
 {
-	USceneComponent* spawnPointFolder = LatestRoom->FindComponentByTag<USceneComponent>(FName("SpawnPointList"));
+	USceneComponent* spawnPointFolder = LatestRoom->GetFloorSpawnsFolder();
 	TArray<USceneComponent*> spawnPoints;
 	spawnPointFolder->GetChildrenComponents(true, spawnPoints);
 
@@ -174,6 +200,35 @@ void ADungeonGenerator::SpawnCoinAtLocations()
 		SpawnPointList.Remove(SelectedFloorSpawnLocation);
 		AmountOfCoins--;
 		SpawnCoinAtLocations();
+	}
+}
+
+void ADungeonGenerator::SpawnFinalRooms()
+{
+
+	for(TSubclassOf<AMasterRoom> roomToSpawn : FinalRoomList)
+	{
+		USceneComponent* chosenExit;
+
+		int exitNum = RandomStream.RandRange(0, ExitsArray.Num() - 1);
+
+		chosenExit = ExitsArray[exitNum];
+
+		if (CheckingForOverlapWithNewRoom(chosenExit))
+		{
+			SpawnFinalRooms();
+			return;
+		}
+
+		FActorSpawnParameters SpawnParams;
+		AActor* nextRoom = GetWorld()->SpawnActor<AMasterRoom>(
+			roomToSpawn,
+			chosenExit->GetComponentLocation(),
+			chosenExit->GetComponentRotation(),
+			SpawnParams);
+
+		FinalRoomList.Remove(roomToSpawn);
+		ExitsArray.RemoveAt(exitNum);
 	}
 }
 

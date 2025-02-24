@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
 #include "Procedural_Dungeon/MasterRoom.h"
+#include "Components/StaticMeshComponent.h"
 #include "CoinPickup.h"
 #include "DungeonGenerator.generated.h"
 
@@ -17,6 +18,8 @@ public:
 	// Sets default values for this actor's properties
 	ADungeonGenerator();
 
+	UFUNCTION(BlueprintCallable)
+	void StartGenerator(int roomNumber, int seed, int CoinAmount);
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
@@ -33,7 +36,12 @@ private:
 	TArray<TSubclassOf<AMasterRoom>> SpecialRoomList;
 
 	UPROPERTY(EditAnywhere)
+	TArray<TSubclassOf<AMasterRoom>> FinalRoomList;
+
+	UPROPERTY(EditAnywhere)
 	int RoomAmount;
+
+	int totalRooms;
 
 	UPROPERTY(EditAnywhere)
 	float delayTimer;
@@ -54,9 +62,7 @@ private:
 	UPROPERTY(VisibleAnywhere)
 	AMasterRoom* LatestRoom;
 
-	UPROPERTY(VisibleAnywhere)
-	TArray<UPrimitiveComponent*> OverlappedList;
-
+	TArray<USceneComponent*> OverlappedList;
 
 	UPROPERTY(VisibleAnywhere)
 	FRandomStream RandomStream;
@@ -72,7 +78,10 @@ private:
 	void SpawnNextRoom();
 
 	UFUNCTION()
-	void AddOverlappingRoomsToList();
+	void CloseOffExits();
+
+	UFUNCTION()
+	bool CheckingForOverlapWithNewRoom(USceneComponent* chosenExit);
 
 	UFUNCTION()
 	void CheckForOverlap();
@@ -84,6 +93,9 @@ private:
 
 	UFUNCTION()
 	void SpawnCoinAtLocations();
+
+	UFUNCTION()
+	void SpawnFinalRooms();
 
 public:	
 	// Called every frame
